@@ -1,48 +1,38 @@
-# syntax=docker/dockerfile:1
-#
-# Frontend image. Build context is ./frontend
-#
-#   docker build -t haze21/joa-frontend:latest ./frontend
-#
-# The result is nginx serving a static bundle. It does not proxy /api -- the
-# Ingress routes /api to the backend Service, so the browser sees one origin
-# and the image stays free of any environment-specific backend address.
-
-# ---------------------------------------------------------------------------
-# Build
-# ---------------------------------------------------------------------------
-FROM node:22-alpine AS build
+# ── Stage 1: Builder ──────────────────────────────────────────────────────────
+# Node 22 rather than 20: Vite 8 requires ^20.19.0 || >=22.12.0, and Node 20
+# reached end-of-life in April 2026. This stage does not ship — the final image
+# is nginx — so it only affects build time.
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# npm ci needs both files and installs exactly the lockfile, which is what
-# makes a CI build reproducible.
+# Copy package files first for layer caching
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# Copy all source files
 COPY . .
 
-# Vite inlines VITE_* variables at build time -- they cannot be changed later
-# by the container's environment. "/api" is correct behind the Ingress; override
-# only if the API lives on a different origin.
+# Build the Vite/React app — outputs to /app/dist by default
+# VITE_ prefixed env vars are embedded at build time.
+# We pass the API Gateway URL as a build arg so the built JS knows where to call.
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build
 
-# ---------------------------------------------------------------------------
-# Serve
-# ---------------------------------------------------------------------------
-FROM nginx:1.27-alpine AS runtime
+# ── Stage 2: Final (Nginx) ────────────────────────────────────────────────────
+FROM nginx:1.27-alpine
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+# Remove default Nginx config
+RUN rm /etc/nginx/conf.d/default.conf
 
-# The stock nginx image already runs workers as the `nginx` user; port 80 is
-# fine because the container is not privileged.
+# Copy our custom Nginx config
+COPY nginx.conf /etc/nginx/conf.d/app.conf
+
+# Copy built static files from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
 EXPOSE 80
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
-    CMD wget -qO- http://127.0.0.1/healthz || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

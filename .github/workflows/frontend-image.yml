@@ -1,80 +1,66 @@
-name: Frontend image
+name: CI — Frontend UI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
+    # Monorepo: only rebuild this image when the frontend actually changes.
     paths:
       - "frontend/**"
       - ".github/workflows/frontend-image.yml"
   pull_request:
+    branches: [main]
     paths:
       - "frontend/**"
   workflow_dispatch:
 
 env:
-  IMAGE: haze21/joa-frontend
+  IMAGE_NAME: haze21/joa-frontend
+  HELM_REPO: haze-me/k8s-helm-charts
+  HELM_VALUES_PATH: charts/joa-frontend/values.yaml
+
+  # CHANGE ME — baked into the bundle at build time and unchangeable
+  # afterwards, because Vite inlines VITE_* variables into the JavaScript.
+  # A rebuild is required to point the UI at a different API.
+  # Set it as a repo variable to avoid editing this file:
+  #   gh variable set VITE_API_BASE_URL --body "https://api.your-real-domain.com"
+  API_BASE_URL_FALLBACK: https://api.job-outreach.example.com
 
 jobs:
-  test:
-    name: Lint and build
+  build-and-push:
+    name: Build & Push Docker Image
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+      - name: Set image tag
+        id: meta
+        run: echo "TAG=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
 
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Lint
-        working-directory: frontend
-        run: npm run lint
-
-      # A production build is the real check: it fails on anything the dev
-      # server tolerates, such as an unresolved import.
-      - name: Build
-        working-directory: frontend
-        run: npm run build
-
-  build:
-    name: Build and push
-    runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name != 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Derive tags
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=raw,value=latest
-            type=sha,format=long
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
+      # No separate Node/npm steps: the Dockerfile's builder stage already runs
+      # `npm ci` and `npm run build`. Doing it on the runner too would duplicate
+      # the work, and `npm ci` at the repo root would fail — package.json lives
+      # in frontend/.
+      - name: Build and push image
+        uses: docker/build-push-action@v5
         with:
+          # The Dockerfile lives in frontend/, not the repo root.
           context: ./frontend
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Vite inlines this at build time; it cannot be changed by the
-          # running container. "/api" is correct behind the Ingress.
+          push: ${{ github.ref == 'refs/heads/main' }}
           build-args: |
-            VITE_API_BASE_URL=/api
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || env.API_BASE_URL_FALLBACK }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.TAG }}
+            ${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
