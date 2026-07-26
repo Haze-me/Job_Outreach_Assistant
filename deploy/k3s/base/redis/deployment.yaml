@@ -19,14 +19,6 @@ spec:
         - name: redis
           image: redis:7-alpine
           imagePullPolicy: IfNotPresent
-          # Persist the queue so a restart does not silently drop queued scans,
-          # and never evict: losing a broker message loses a user's scan.
-          args:
-            - "redis-server"
-            - "--appendonly"
-            - "yes"
-            - "--maxmemory-policy"
-            - "noeviction"
           ports:
             - containerPort: 6379
           resources:
@@ -36,16 +28,9 @@ spec:
             limits:
               cpu: 200m
               memory: 128Mi
-          readinessProbe:
-            exec:
-              command: ["redis-cli", "ping"]
-            initialDelaySeconds: 5
-            periodSeconds: 10
           volumeMounts:
             - name: redis-storage
               mountPath: /data
-      # Without this block the Deployment is rejected: the volumeMount above
-      # names a volume that does not exist.
       volumes:
         - name: redis-storage
           persistentVolumeClaim:

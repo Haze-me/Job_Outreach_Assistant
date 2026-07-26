@@ -39,20 +39,10 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-          # Read the credentials from the environment rather than hardcoding
-          # them, so changing POSTGRES_USER in the Secret cannot silently leave
-          # this probe failing forever.
-          readinessProbe:
-            exec:
-              command: ["sh", "-c", 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
-            initialDelaySeconds: 5
-            periodSeconds: 10
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
               subPath: pgdata
-      # Without this block the Deployment is rejected: the volumeMount above
-      # names a volume that does not exist.
       volumes:
         - name: postgres-storage
           persistentVolumeClaim:

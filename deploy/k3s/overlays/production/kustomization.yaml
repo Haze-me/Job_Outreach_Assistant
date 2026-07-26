@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: job-outreach
+
+resources:
+  - ../../base
+
+images:
+  - name: haze21/job-outreach-backend
+    newTag: latest
+  - name: haze21/job-outreach-frontend
+    newTag: latest

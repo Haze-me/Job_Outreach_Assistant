@@ -1,0 +1,50 @@
+name: Deploy — K3s Manifests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/k3s/**'
+      - '.github/workflows/deploy-manifests.yml'
+
+jobs:
+  apply:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Apply namespace and config
+        run: |
+          kubectl apply -f deploy/k3s/base/namespace.yaml
+          kubectl apply -f deploy/k3s/base/configmap.yaml
+
+      - name: Create or update app secrets
+        run: |
+          kubectl create secret generic app-secrets \
+            -n job-outreach \
+            --from-literal=DJANGO_SECRET_KEY="${{ secrets.DJANGO_SECRET_KEY }}" \
+            --from-literal=POSTGRES_USER="${{ secrets.POSTGRES_USER }}" \
+            --from-literal=POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" \
+            --from-literal=DATABASE_URL="postgres://${{ secrets.POSTGRES_USER }}:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/job_outreach" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply full stack via Kustomize
+        run: |
+          kubectl apply -k deploy/k3s/overlays/production
+
+      - name: Wait for stateful services
+        run: |
+          kubectl rollout status deployment/postgres -n job-outreach --timeout=90s
+          kubectl rollout status deployment/redis -n job-outreach --timeout=90s
+
+      - name: Run migrations
+        run: |
+          kubectl delete job django-migrate -n job-outreach --ignore-not-found
+          kubectl apply -f deploy/k3s/base/migrate-job.yaml
+          kubectl wait --for=condition=complete job/django-migrate -n job-outreach --timeout=120s
+
+      - name: Wait for app rollouts
+        run: |
+          kubectl rollout status deployment/backend -n job-outreach --timeout=90s
+          kubectl rollout status deployment/frontend -n job-outreach --timeout=90s

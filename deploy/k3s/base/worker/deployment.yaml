@@ -16,6 +16,7 @@ spec:
       containers:
         - name: celery-worker
           image: haze21/job-outreach-backend:latest
+          imagePullPolicy: Always
           command: ["celery", "-A", "config", "worker", "--loglevel=info"]
           envFrom:
             - configMapRef:
