@@ -1,53 +1,44 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: joa-config
+  name: app-config
   namespace: job-outreach
 data:
   DJANGO_SETTINGS_MODULE: "config.settings.production"
 
-  # Must list every hostname the app is reached by. Django rejects anything
-  # else with a 400, which is the correct behaviour and also the most common
-  # cause of a "working" deployment returning 400 to every request.
-  DJANGO_ALLOWED_HOSTS: "joa.local,joa-backend,localhost,127.0.0.1"
-  CSRF_TRUSTED_ORIGINS: "http://joa.local"
+  # Must be DJANGO_ALLOWED_HOSTS, not ALLOWED_HOSTS: production settings read
+  # env.list("DJANGO_ALLOWED_HOSTS") with no default, so a wrong key name means
+  # every pod dies at import with ImproperlyConfigured.
+  # "backend" is included so in-cluster calls and probes are accepted.
+  DJANGO_ALLOWED_HOSTS: "email.emchrismobility.com,backend,localhost,127.0.0.1"
 
-  # The frontend is served from the same origin through the Ingress, so CORS
-  # is not exercised in this topology. Kept accurate rather than permissive.
-  CORS_ALLOWED_ORIGINS: "http://joa.local"
+  # The UI and the API share one origin (the Ingress routes /api to the
+  # backend), so the browser never makes a cross-origin request and CORS is
+  # not exercised. Listed anyway so it is correct if that ever changes.
+  CORS_ALLOWED_ORIGINS: "https://email.emchrismobility.com"
+  CSRF_TRUSTED_ORIGINS: "https://email.emchrismobility.com"
 
-  # --- TLS -----------------------------------------------------------------
-  # False until a certificate is in place. Leaving the production default of
-  # True without TLS produces an infinite redirect loop: Django 301s http to
-  # https, the Ingress terminates nothing, and the browser gives up.
-  # Set both of these once cert-manager (or your own cert) is serving https.
+  # Leave False until TLS is genuinely terminating. Production defaults this to
+  # True; without a certificate Django 301s http->https, nothing serves https,
+  # and the browser loops. Flip both once cert-manager issues a certificate.
   SECURE_SSL_REDIRECT: "False"
   SECURE_HSTS_SECONDS: "0"
 
-  # --- Celery --------------------------------------------------------------
-  # Service DNS inside the namespace. Database 0 is the broker, 1 the results
-  # backend, so a FLUSHDB on one cannot destroy the other.
-  CELERY_BROKER_URL: "redis://joa-redis:6379/0"
-  CELERY_RESULT_BACKEND: "redis://joa-redis:6379/1"
-  # Never eager in a cluster: the whole point of the worker pod is that scans
-  # do not block a web request.
-  CELERY_TASK_ALWAYS_EAGER: "False"
-  CELERY_TASK_TIME_LIMIT: "900"
-  CELERY_TASK_SOFT_TIME_LIMIT: "840"
+  # Consumed by the postgres container itself. Django does not read these --
+  # it uses DATABASE_URL from the Secret.
+  POSTGRES_DB: "job_outreach"
 
-  # --- Crawler -------------------------------------------------------------
+  # Celery. Service DNS inside the namespace; db 0 is the broker, db 1 the
+  # result backend so flushing one cannot destroy the other.
+  CELERY_BROKER_URL: "redis://redis:6379/0"
+  CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+  CELERY_TASK_ALWAYS_EAGER: "False"
+
+  # Crawler
   CRAWLER_MAX_PAGES: "40"
   CRAWLER_MAX_DEPTH: "2"
   CRAWLER_DELAY_SECONDS: "0.5"
-  CRAWLER_REQUEST_TIMEOUT: "10"
   CRAWLER_RESPECT_ROBOTS_TXT: "True"
-  # Must stay False. Inside a cluster this is more dangerous than on a laptop:
-  # the pod network can reach every other Service, and the cloud metadata
-  # endpoint sits at a link-local address.
+  # Must stay False. In a cluster the pod network reaches every Service, and
+  # the cloud metadata endpoint sits on a link-local address.
   CRAWLER_ALLOW_PRIVATE_NETWORKS: "False"
-
-  # --- API -----------------------------------------------------------------
-  API_PAGE_SIZE: "20"
-  JWT_ACCESS_MINUTES: "15"
-  JWT_REFRESH_DAYS: "7"
-  DJANGO_LOG_LEVEL: "INFO"

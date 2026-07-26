@@ -41,8 +41,11 @@ jobs:
         with:
           context: ./frontend
           push: ${{ github.ref == 'refs/heads/main' }}
+          # Relative: the Ingress serves the UI and the API from one host, so
+          # the browser resolves /api against the page's own origin. Keeps the
+          # image environment-independent.
           build-args: |
-            VITE_API_BASE_URL=https://api.yourdomain.com
+            VITE_API_BASE_URL=/api
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.TAG }}
             ${{ env.IMAGE_NAME }}:latest

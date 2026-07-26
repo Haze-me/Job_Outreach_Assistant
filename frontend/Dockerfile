@@ -8,7 +8,12 @@ RUN npm ci
 
 COPY . .
 
-ARG VITE_API_BASE_URL=https://email-outreach.emchrismobility.com
+# Relative on purpose. The bundle runs in the user's browser, not in the
+# cluster, so cluster DNS ("backend:8000") and localhost are both meaningless
+# to it. A relative path resolves against whichever origin served the page, so
+# the Ingress routing /api to the backend is all that is needed -- and the same
+# image works on localhost, staging and production without a rebuild.
+ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build

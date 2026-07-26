@@ -1,61 +1,58 @@
-# Ingress for k3s' bundled Traefik.
+# One hostname, routed by path.
 #
-# Everything is served from one hostname, which is what keeps the browser on a
-# single origin: no CORS, no preflights, and the frontend's baked-in
-# VITE_API_BASE_URL="/api" resolves correctly.
-#
-# Routing:
-#   /api     -> backend   (the REST API)
-#   /admin   -> backend   (Django admin)
-#   /static  -> backend   (admin + API docs assets, served by WhiteNoise)
-#   /        -> frontend  (the SPA, with client-side routing fallback)
-#
-# Traefik matches the longest prefix first, so the order below is for human
-# readers rather than the router.
+# This is what lets the frontend ship with VITE_API_BASE_URL="/api" -- a
+# relative path the browser resolves against whichever origin served the page.
+# The bundle contains no hostname, so the same image runs in every environment,
+# and because the UI and API share an origin there is no CORS at all.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: joa
+  name: job-outreach-ingress
   namespace: job-outreach
   annotations:
-    # Uncomment once cert-manager is installed, then flip SECURE_SSL_REDIRECT
-    # and SECURE_HSTS_SECONDS in the ConfigMap.
+    # Both entrypoints while TLS is not yet configured; drop "web" once
+    # certificates are issued and SECURE_SSL_REDIRECT is turned on.
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
     # cert-manager.io/cluster-issuer: letsencrypt-prod
-    traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   ingressClassName: traefik
   rules:
-    - host: joa.local
+    - host: email.emchrismobility.com
       http:
         paths:
+          # More specific prefixes first. /static carries the Django admin and
+          # Swagger UI assets, served by WhiteNoise from the backend image.
           - path: /api
             pathType: Prefix
             backend:
               service:
-                name: joa-backend
+                name: backend
                 port:
                   number: 8000
           - path: /admin
             pathType: Prefix
             backend:
               service:
-                name: joa-backend
+                name: backend
                 port:
                   number: 8000
           - path: /static
             pathType: Prefix
             backend:
               service:
-                name: joa-backend
+                name: backend
                 port:
                   number: 8000
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: joa-frontend
+                name: frontend
                 port:
                   number: 80
+  # Uncomment with cert-manager, then set SECURE_SSL_REDIRECT=True and
+  # SECURE_HSTS_SECONDS=31536000 in the ConfigMap.
   # tls:
-  #   - hosts: [joa.local]
-  #     secretName: joa-tls
+  #   - hosts:
+  #       - email.emchrismobility.com
+  #     secretName: job-outreach-tls

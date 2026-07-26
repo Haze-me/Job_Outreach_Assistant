@@ -2,5 +2,3 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: job-outreach
-  labels:
-    app.kubernetes.io/name: job-outreach-assistant

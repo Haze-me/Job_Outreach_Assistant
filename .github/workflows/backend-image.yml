@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: haze21/joa-backend
+  IMAGE_NAME: haze21/job-outreach-backend
 
 jobs:
   build-and-push:
