@@ -51,3 +51,16 @@ jobs:
             ${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Rollout Restart on K3s
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    env:
+      KUBECONFIG: /home/ubuntu/.kube/config
+    steps:
+      - name: Rollout restart frontend
+        run: |
+          kubectl rollout restart deployment/frontend -n job-outreach
+          kubectl rollout status deployment/frontend -n job-outreach --timeout=90s
