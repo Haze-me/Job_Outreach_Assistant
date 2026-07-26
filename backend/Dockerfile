@@ -1,4 +1,4 @@
-# ── Stage 1: Builder ──────────────────────────────────────────────────────────
+# Stage 1: Builder
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
@@ -13,7 +13,7 @@ COPY requirements/ requirements/
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements/production.txt
 
-# ── Stage 2: Final (python:3.12-slim) ─────────────────────────────────────────
+# Stage 2: Final (python:3.12-slim) 
 FROM python:3.12-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

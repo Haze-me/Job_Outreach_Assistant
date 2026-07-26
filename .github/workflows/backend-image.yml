@@ -1,4 +1,4 @@
-name: CI — Backend API
+name: CI_Backend API
 
 on:
   push:
@@ -15,8 +15,6 @@ on:
 
 env:
   IMAGE_NAME: haze21/joa-backend
-  HELM_REPO: haze-me/k8s-helm-charts
-  HELM_VALUES_PATH: charts/joa-backend/values.yaml
 
 jobs:
   build-and-push:
