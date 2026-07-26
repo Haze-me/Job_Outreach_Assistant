@@ -1,0 +1,61 @@
+# Ingress for k3s' bundled Traefik.
+#
+# Everything is served from one hostname, which is what keeps the browser on a
+# single origin: no CORS, no preflights, and the frontend's baked-in
+# VITE_API_BASE_URL="/api" resolves correctly.
+#
+# Routing:
+#   /api     -> backend   (the REST API)
+#   /admin   -> backend   (Django admin)
+#   /static  -> backend   (admin + API docs assets, served by WhiteNoise)
+#   /        -> frontend  (the SPA, with client-side routing fallback)
+#
+# Traefik matches the longest prefix first, so the order below is for human
+# readers rather than the router.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: joa
+  namespace: job-outreach
+  annotations:
+    # Uncomment once cert-manager is installed, then flip SECURE_SSL_REDIRECT
+    # and SECURE_HSTS_SECONDS in the ConfigMap.
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: joa.local
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: joa-backend
+                port:
+                  number: 8000
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: joa-backend
+                port:
+                  number: 8000
+          - path: /static
+            pathType: Prefix
+            backend:
+              service:
+                name: joa-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: joa-frontend
+                port:
+                  number: 80
+  # tls:
+  #   - hosts: [joa.local]
+  #     secretName: joa-tls

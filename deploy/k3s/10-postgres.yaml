@@ -1,0 +1,87 @@
+# PostgreSQL.
+#
+# This is the piece that becomes mandatory the moment Celery runs in its own
+# pod. SQLite is a file: a web pod and a worker pod are separate processes,
+# usually on separate nodes, and there is no safe way for both to write to the
+# same SQLite file. The application already reads DATABASE_URL, so nothing in
+# the code changes -- only this manifest and the Secret.
+apiVersion: v1
+kind: Service
+metadata:
+  name: joa-postgres
+  namespace: job-outreach
+spec:
+  clusterIP: None # headless: the StatefulSet gives each pod a stable DNS name
+  selector:
+    app: joa-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: joa-postgres
+  namespace: job-outreach
+spec:
+  serviceName: joa-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: joa-postgres
+  template:
+    metadata:
+      labels:
+        app: joa-postgres
+    spec:
+      securityContext:
+        fsGroup: 999 # the postgres user in the official image
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: job_outreach
+            - name: POSTGRES_USER
+              value: joa
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: joa-secrets
+                  key: POSTGRES_PASSWORD
+            # The image refuses to initialise into a non-empty mount point
+            # unless the data lives in a subdirectory of it.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "joa", "-d", "job_outreach"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "joa", "-d", "job_outreach"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # k3s ships local-path as the default StorageClass, so this is left
+        # unset deliberately. Name one explicitly on a cluster with several.
+        resources:
+          requests:
+            storage: 5Gi

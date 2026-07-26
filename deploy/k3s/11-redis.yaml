@@ -1,0 +1,90 @@
+# Redis: Celery's broker and result backend.
+#
+# Persistence is enabled (appendonly) so a restart does not silently drop
+# queued scans. A scan is not critical data, but losing one with no trace is
+# worse than replaying it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: joa-redis
+  namespace: job-outreach
+spec:
+  selector:
+    app: joa-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: joa-redis-data
+  namespace: job-outreach
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: joa-redis
+  namespace: job-outreach
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: two Redis pods cannot share one
+  # ReadWriteOnce volume, so a rolling update would deadlock waiting for a
+  # mount the old pod still holds.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: joa-redis
+  template:
+    metadata:
+      labels:
+        app: joa-redis
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args:
+            - "redis-server"
+            - "--appendonly"
+            - "yes"
+            # Cap memory so a runaway queue cannot evict the node. Broker
+            # messages must never be evicted, hence noeviction: better to fail
+            # an enqueue loudly than to lose a task silently.
+            - "--maxmemory"
+            - "256mb"
+            - "--maxmemory-policy"
+            - "noeviction"
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 384Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: joa-redis-data

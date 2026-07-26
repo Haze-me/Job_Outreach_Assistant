@@ -1,0 +1,75 @@
+# Celery worker.
+#
+# Same image as the web Deployment, different command. That is deliberate: a
+# worker running a different build of the task code than the web process that
+# enqueued the job is a subtle and painful class of bug.
+#
+# No Service: nothing connects *to* a worker. It reaches out to Redis for work
+# and to Postgres to record results.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: joa-worker
+  namespace: job-outreach
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: joa-worker
+  template:
+    metadata:
+      labels:
+        app: joa-worker
+    spec:
+      # A scan can take a couple of minutes. Give an evicted pod time to finish
+      # the page it is on and record the result instead of leaving a scan stuck
+      # in "running" forever.
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: haze21/joa-backend:latest
+          imagePullPolicy: Always
+          command:
+            - celery
+            - -A
+            - config
+            - worker
+            - --loglevel=info
+            # Concurrency 2 per pod, scaled by replicas. Scans are I/O bound
+            # and mostly spent waiting on the politeness delay, so processes
+            # are cheap -- but each still holds a database connection.
+            - --concurrency=2
+            # Fetch one task at a time. The default prefetch reserves several
+            # per process, which with long tasks means work sitting idle in a
+            # busy worker while another pod has nothing to do.
+            - --prefetch-multiplier=1
+            # Recycle a process after 50 scans, so a slow leak in a
+            # third-party parser cannot accumulate indefinitely.
+            - --max-tasks-per-child=50
+          envFrom:
+            - configMapRef:
+                name: joa-config
+            - secretRef:
+                name: joa-secrets
+          # `inspect ping` round-trips through the broker, so this proves the
+          # worker is registered and consuming rather than merely running.
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "celery -A config inspect ping -d celery@$HOSTNAME --timeout 10"
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 10001

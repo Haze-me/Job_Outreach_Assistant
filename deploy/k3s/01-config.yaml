@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: joa-config
+  namespace: job-outreach
+data:
+  DJANGO_SETTINGS_MODULE: "config.settings.production"
+
+  # Must list every hostname the app is reached by. Django rejects anything
+  # else with a 400, which is the correct behaviour and also the most common
+  # cause of a "working" deployment returning 400 to every request.
+  DJANGO_ALLOWED_HOSTS: "joa.local,joa-backend,localhost,127.0.0.1"
+  CSRF_TRUSTED_ORIGINS: "http://joa.local"
+
+  # The frontend is served from the same origin through the Ingress, so CORS
+  # is not exercised in this topology. Kept accurate rather than permissive.
+  CORS_ALLOWED_ORIGINS: "http://joa.local"
+
+  # --- TLS -----------------------------------------------------------------
+  # False until a certificate is in place. Leaving the production default of
+  # True without TLS produces an infinite redirect loop: Django 301s http to
+  # https, the Ingress terminates nothing, and the browser gives up.
+  # Set both of these once cert-manager (or your own cert) is serving https.
+  SECURE_SSL_REDIRECT: "False"
+  SECURE_HSTS_SECONDS: "0"
+
+  # --- Celery --------------------------------------------------------------
+  # Service DNS inside the namespace. Database 0 is the broker, 1 the results
+  # backend, so a FLUSHDB on one cannot destroy the other.
+  CELERY_BROKER_URL: "redis://joa-redis:6379/0"
+  CELERY_RESULT_BACKEND: "redis://joa-redis:6379/1"
+  # Never eager in a cluster: the whole point of the worker pod is that scans
+  # do not block a web request.
+  CELERY_TASK_ALWAYS_EAGER: "False"
+  CELERY_TASK_TIME_LIMIT: "900"
+  CELERY_TASK_SOFT_TIME_LIMIT: "840"
+
+  # --- Crawler -------------------------------------------------------------
+  CRAWLER_MAX_PAGES: "40"
+  CRAWLER_MAX_DEPTH: "2"
+  CRAWLER_DELAY_SECONDS: "0.5"
+  CRAWLER_REQUEST_TIMEOUT: "10"
+  CRAWLER_RESPECT_ROBOTS_TXT: "True"
+  # Must stay False. Inside a cluster this is more dangerous than on a laptop:
+  # the pod network can reach every other Service, and the cloud metadata
+  # endpoint sits at a link-local address.
+  CRAWLER_ALLOW_PRIVATE_NETWORKS: "False"
+
+  # --- API -----------------------------------------------------------------
+  API_PAGE_SIZE: "20"
+  JWT_ACCESS_MINUTES: "15"
+  JWT_REFRESH_DAYS: "7"
+  DJANGO_LOG_LEVEL: "INFO"

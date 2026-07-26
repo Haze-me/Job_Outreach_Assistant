@@ -1,0 +1,46 @@
+# Optional infrastructure for the spec's full stack.
+#
+# The project runs on SQLite with eager Celery out of the box. Bring these
+# services up when you want the production-shaped stack, then point
+# backend/.env at them:
+#
+#   DATABASE_URL=postgres://joa:joa@127.0.0.1:5432/job_outreach
+#   CELERY_TASK_ALWAYS_EAGER=False
+#
+#   docker compose up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: joa-postgres
+    environment:
+      POSTGRES_DB: job_outreach
+      POSTGRES_USER: joa
+      POSTGRES_PASSWORD: joa
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U joa -d job_outreach"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: joa-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

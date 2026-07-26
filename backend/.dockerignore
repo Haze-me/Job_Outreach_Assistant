@@ -1,0 +1,26 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.sqlite3-journal
+db.sqlite3
+
+# Never bake secrets into an image layer.
+.env
+.env.*
+!.env.example
+
+staticfiles/
+media/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Tests are not needed at runtime and only enlarge the image.
+**/tests/
+conftest.py
+
+Dockerfile
+.dockerignore

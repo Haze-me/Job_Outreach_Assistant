@@ -1,0 +1,50 @@
+# ---- Python / Django ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+*.sqlite3
+*.sqlite3-journal
+db.sqlite3
+staticfiles/
+media/
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+celerybeat-schedule*
+
+# ---- Environment ----
+.env
+.env.*
+!.env.example
+
+# ---- Kubernetes secrets ----
+# The Secret is created imperatively (see deploy/k3s/README.md) so real values
+# never reach git. Only the *.example.yaml template is tracked.
+deploy/**/secret.yaml
+deploy/**/secrets.yaml
+deploy/**/*-secret.yaml
+!deploy/**/*secret.example.yaml
+kubeconfig
+*.kubeconfig
+
+# ---- Node / Vite ----
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Editors / OS ----
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

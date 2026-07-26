@@ -1,0 +1,55 @@
+# Migrations run as their own Job, not as an init container on the web
+# Deployment.
+#
+# With more than one web replica, an init container means every replica runs
+# `migrate` simultaneously on startup. Django takes a lock so it is usually
+# survivable, but "usually" is doing a lot of work there. A Job runs exactly
+# once and fails visibly.
+#
+# Re-run it on every deploy that ships a migration:
+#   kubectl -n job-outreach delete job joa-migrate --ignore-not-found
+#   kubectl -n job-outreach apply -f 20-migrate-job.yaml
+#   kubectl -n job-outreach wait --for=condition=complete job/joa-migrate --timeout=300s
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: joa-migrate
+  namespace: job-outreach
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: joa-migrate
+    spec:
+      restartPolicy: Never
+      # Postgres may still be starting when the Job is created; block here
+      # rather than burning through backoffLimit on connection refusals.
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h joa-postgres -p 5432 -U joa; do
+                echo "waiting for postgres..."
+                sleep 2
+              done
+      containers:
+        - name: migrate
+          image: haze21/joa-backend:latest
+          imagePullPolicy: Always
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          envFrom:
+            - configMapRef:
+                name: joa-config
+            - secretRef:
+                name: joa-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
