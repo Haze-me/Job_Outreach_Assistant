@@ -3,27 +3,16 @@ name: CI — Frontend UI
 on:
   push:
     branches: [main, develop]
-    # Monorepo: only rebuild this image when the frontend actually changes.
     paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-image.yml"
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
   pull_request:
     branches: [main]
     paths:
-      - "frontend/**"
-  workflow_dispatch:
+      - 'frontend/**'
 
 env:
-  IMAGE_NAME: haze21/joa-frontend
-  HELM_REPO: haze-me/k8s-helm-charts
-  HELM_VALUES_PATH: charts/joa-frontend/values.yaml
-
-  # CHANGE ME — baked into the bundle at build time and unchangeable
-  # afterwards, because Vite inlines VITE_* variables into the JavaScript.
-  # A rebuild is required to point the UI at a different API.
-  # Set it as a repo variable to avoid editing this file:
-  #   gh variable set VITE_API_BASE_URL --body "https://api.your-real-domain.com"
-  API_BASE_URL_FALLBACK: https://api.job-outreach.example.com
+  IMAGE_NAME: haze21/job-outreach-frontend
 
 jobs:
   build-and-push:
@@ -47,18 +36,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # No separate Node/npm steps: the Dockerfile's builder stage already runs
-      # `npm ci` and `npm run build`. Doing it on the runner too would duplicate
-      # the work, and `npm ci` at the repo root would fail — package.json lives
-      # in frontend/.
       - name: Build and push image
         uses: docker/build-push-action@v5
         with:
-          # The Dockerfile lives in frontend/, not the repo root.
           context: ./frontend
           push: ${{ github.ref == 'refs/heads/main' }}
           build-args: |
-            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || env.API_BASE_URL_FALLBACK }}
+            VITE_API_BASE_URL=https://api.yourdomain.com
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.TAG }}
             ${{ env.IMAGE_NAME }}:latest
