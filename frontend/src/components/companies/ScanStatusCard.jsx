@@ -12,8 +12,9 @@ import { formatDateTime } from "../../utils/format";
  * survive a page reload: the scan id is otherwise only ever returned by the
  * request that started the scan.
  */
-export function ScanStatusCard({ lastScan, onScan, isStarting, error }) {
+export function ScanStatusCard({ lastScan, onScan, isStarting, error, onCancel, isCancelling }) {
   const isActive = lastScan?.is_active;
+  const canCancel = Boolean(lastScan?.can_be_cancelled);
 
   return (
     <div className="rounded-xl bg-white p-6 shadow-xs ring-1 ring-slate-200/70">
@@ -74,6 +75,15 @@ export function ScanStatusCard({ lastScan, onScan, isStarting, error }) {
         <Button onClick={onScan} isLoading={isStarting} disabled={isActive}>
           {isActive ? "Scan in progress" : lastScan ? "Scan again" : "Scan website"}
         </Button>
+
+        {/* Only offered while there is something to stop. A running crawl can
+            take a couple of minutes, so leaving the user no way out but
+            waiting is poor. */}
+        {canCancel && onCancel && (
+          <Button variant="secondary" onClick={onCancel} isLoading={isCancelling}>
+            {isCancelling ? "Cancelling..." : "Cancel scan"}
+          </Button>
+        )}
 
         {lastScan && (
           <Link

@@ -6,7 +6,8 @@ import { Card, CardHeader } from "../components/ui/Card";
 import { PageHeader } from "../components/ui/PageHeader";
 import { FullPageSpinner } from "../components/ui/Spinner";
 import { StatCard } from "../components/ui/StatCard";
-import { useScanStatus } from "../hooks/useScan";
+import { Button } from "../components/ui/Button";
+import { useCancelScan, useScanStatus } from "../hooks/useScan";
 import { PAGE_TYPE_LABELS, SCAN_STATUS_TONES } from "../utils/constants";
 import { displayUrl, formatDateTime } from "../utils/format";
 import { getErrorMessage } from "../utils/errors";
@@ -14,6 +15,7 @@ import { getErrorMessage } from "../utils/errors";
 export function ScanProgressPage() {
   const { scanId } = useParams();
   const { data: scan, isPending, isError, error } = useScanStatus(scanId);
+  const cancelScan = useCancelScan();
 
   if (isPending) return <FullPageSpinner label="Loading scan" />;
 
@@ -43,8 +45,43 @@ export function ScanProgressPage() {
             <span className="text-slate-400"> · {displayUrl(scan.target_url)}</span>
           </>
         }
-        action={<Badge tone={SCAN_STATUS_TONES[scan.status] ?? "neutral"}>{scan.status_display}</Badge>}
+        action={
+          <div className="flex items-center gap-3">
+            <Badge tone={SCAN_STATUS_TONES[scan.status] ?? "neutral"}>
+              {scan.status_display}
+            </Badge>
+            {scan.can_be_cancelled && (
+              <Button
+                variant="secondary"
+                size="sm"
+                isLoading={cancelScan.isPending}
+                onClick={() => cancelScan.mutate(scan.id)}
+              >
+                {cancelScan.isPending ? "Cancelling..." : "Cancel scan"}
+              </Button>
+            )}
+          </div>
+        }
       />
+
+      {cancelScan.isError && (
+        <Alert variant="error" className="mb-6">
+          {getErrorMessage(cancelScan.error)}
+        </Alert>
+      )}
+
+      {scan.status === "cancelled" && (
+        <Alert variant="info" className="mb-6">
+          This scan was cancelled. The {scan.pages_scanned} pages it had already
+          read, and any contacts found in them, have been kept.
+        </Alert>
+      )}
+
+      {scan.cancel_requested && scan.is_active && (
+        <Alert variant="warning" className="mb-6">
+          Stopping — the crawler finishes the page it is on, then shuts down.
+        </Alert>
+      )}
 
       {scan.is_active && (
         <Alert variant="info" className="mb-6">

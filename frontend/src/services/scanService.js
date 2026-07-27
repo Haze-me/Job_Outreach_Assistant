@@ -31,3 +31,16 @@ export async function fetchScanStatus(scanId) {
   const { data } = await apiClient.get(`/scan/status/${scanId}`);
   return data;
 }
+
+/**
+ * Stops a scan that has not finished.
+ *
+ * A queued scan is revoked outright. One already running is stopped
+ * cooperatively -- the crawler notices between pages and shuts down cleanly,
+ * so the pages and contacts already found are kept rather than discarded.
+ * Returns 409 if the scan has already finished.
+ */
+export async function cancelScan(scanId) {
+  const { data } = await apiClient.post(`/scan/cancel/${scanId}`);
+  return data;
+}

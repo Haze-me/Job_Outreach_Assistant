@@ -15,7 +15,7 @@ import { FullPageSpinner } from "../components/ui/Spinner";
 import { useCompany, useDeleteCompany, useUpdateCompany } from "../hooks/useCompanies";
 import { useCreateNote, useDeleteNote, useNotes, useUpdateNote } from "../hooks/useNotes";
 import { useContacts } from "../hooks/useContacts";
-import { useStartScan } from "../hooks/useScan";
+import { useCancelScan, useStartScan } from "../hooks/useScan";
 import { displayUrl, formatDate } from "../utils/format";
 import { getErrorMessage } from "../utils/errors";
 
@@ -30,6 +30,7 @@ export function CompanyDetailPage() {
   const updateCompany = useUpdateCompany();
   const deleteCompany = useDeleteCompany();
   const startScan = useStartScan();
+  const cancelScan = useCancelScan();
   const createNote = useCreateNote();
   const updateNote = useUpdateNote();
   const deleteNote = useDeleteNote();
@@ -122,6 +123,18 @@ export function CompanyDetailPage() {
             onScan={handleScan}
             isStarting={startScan.isPending}
             error={scanError}
+            isCancelling={cancelScan.isPending}
+            onCancel={async () => {
+              setScanError(null);
+              try {
+                await cancelScan.mutateAsync(company.last_scan.id);
+                // last_scan lives on the company payload, so refetch to show
+                // the new status rather than leaving a stale "running".
+                await refetchCompany();
+              } catch (cancelError) {
+                setScanError(getErrorMessage(cancelError));
+              }
+            }}
           />
 
           <Card>

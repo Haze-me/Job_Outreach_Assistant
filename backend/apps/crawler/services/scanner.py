@@ -45,6 +45,11 @@ class InvalidScanTargetError(ServiceError):
     default_code = "invalid_scan_target"
 
 
+class ScanNotCancellableError(ConflictError):
+    default_detail = "This scan has already finished."
+    default_code = "scan_not_cancellable"
+
+
 # ---------------------------------------------------------------------------
 # Entry points
 # ---------------------------------------------------------------------------
@@ -83,6 +88,63 @@ def _dispatch(scan_id) -> None:
     Scan.objects.filter(pk=scan_id).update(task_id=task_id)
 
 
+@transaction.atomic
+def cancel_scan(*, scan: Scan) -> Scan:
+    """Stops a scan that is queued or already running.
+
+    Two different situations, handled together:
+
+    * **Queued** -- the task has not started. Revoking it means a worker will
+      never pick it up, and the record is closed out immediately.
+    * **Running** -- a worker is mid-crawl. The flag is set and the crawl loop
+      notices it between pages, then stops and records what it found. The
+      worker process is deliberately *not* killed: terminating it would throw
+      away the pages already fetched and leave the scan stuck in `running`
+      with nothing to move it on.
+
+    Revoke is best-effort. If the broker is unreachable the flag still stands,
+    so a worker that later picks the task up will see the cancellation and
+    exit almost immediately.
+    """
+    if not scan.can_be_cancelled:
+        raise ScanNotCancellableError()
+
+    was_pending = scan.status == ScanStatus.PENDING
+
+    scan.cancel_requested = True
+    if was_pending:
+        # Nothing has started, so there is no partial work to preserve.
+        scan.status = ScanStatus.CANCELLED
+        scan.finished_at = timezone.now()
+    scan.save(update_fields=["cancel_requested", "status", "finished_at", "updated_at"])
+
+    if scan.task_id:
+        try:
+            from config.celery import app as celery_app
+
+            celery_app.control.revoke(scan.task_id)
+        except Exception:  # noqa: BLE001 - the flag is the real mechanism
+            logger.warning("Could not revoke task %s for scan %s", scan.task_id, scan.pk)
+
+    logger.info("Cancellation requested for scan %s (was %s)", scan.pk, scan.status)
+    return scan
+
+
+def is_cancellation_requested(scan: Scan) -> bool:
+    """Reads the cancel flag straight from the database.
+
+    The worker holds a Scan instance in memory from before the request
+    arrived, so the flag has to be re-read rather than trusted from the
+    in-process copy. Only one small column is fetched.
+    """
+    return (
+        Scan.objects.filter(pk=scan.pk)
+        .values_list("cancel_requested", flat=True)
+        .first()
+        is True
+    )
+
+
 def run_scan(*, scan_id) -> Scan:
     """Executes a scan end to end. Never raises for crawl failures.
 
@@ -102,8 +164,14 @@ def run_scan(*, scan_id) -> Scan:
 
     try:
         _crawl(scan)
-        scan.status = ScanStatus.COMPLETED
-        scan.error_message = ""
+        # _crawl returns early when cancellation is requested, so a completed
+        # return does not by itself mean the crawl finished its work.
+        if is_cancellation_requested(scan):
+            scan.status = ScanStatus.CANCELLED
+            scan.error_message = ""
+        else:
+            scan.status = ScanStatus.COMPLETED
+            scan.error_message = ""
     except Exception as exc:  # noqa: BLE001 - the failure belongs on the record
         logger.exception("Scan %s failed", scan.pk)
         scan.status = ScanStatus.FAILED
@@ -160,6 +228,13 @@ def _crawl(scan: Scan) -> None:
         scanned = 0
 
         while queue and scanned < max_pages:
+            # Cancellation is checked once per page rather than mid-request:
+            # the politeness delay means a page is at most a second or two, so
+            # this is responsive without abandoning a fetch already in flight.
+            if is_cancellation_requested(scan):
+                logger.info("Scan %s cancelled after %s pages", scan.pk, scanned)
+                return
+
             queue.sort()
             candidate = queue.pop(0)
             if candidate.url in visited:

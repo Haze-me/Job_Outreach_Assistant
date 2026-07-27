@@ -55,6 +55,8 @@ export const SCAN_STATUS_TONES = {
   running: "brand",
   completed: "positive",
   failed: "negative",
+  // Cancelled is a deliberate user action, not a failure -- muted, not red.
+  cancelled: "muted",
 };
 
 export const PAGE_TYPE_LABELS = {

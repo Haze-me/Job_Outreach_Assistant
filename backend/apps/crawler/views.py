@@ -47,6 +47,36 @@ class ScanCreateView(GenericAPIView):
 
 
 @extend_schema(
+    summary="Cancel a running or queued scan",
+    description=(
+        "Stops a scan that has not finished.\n\n"
+        "A queued scan is revoked before a worker starts it. A scan already "
+        "running is stopped cooperatively: the crawler notices the request "
+        "between pages and shuts down cleanly, keeping the pages and contacts "
+        "it has already found rather than discarding them.\n\n"
+        "Returns 409 if the scan has already finished."
+    ),
+    request=None,
+    responses={200: ScanSerializer},
+    tags=["scanner"],
+)
+class ScanCancelView(GenericAPIView):
+    """``POST /api/scan/cancel/{scan_id}``"""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = ScanSerializer
+
+    def post(self, request: Request, scan_id) -> Response:
+        # Scoped to the requesting user, so another user's scan id is simply
+        # not found rather than forbidden.
+        scan = get_object_or_404(Scan, pk=scan_id, user=request.user)
+
+        scanner.cancel_scan(scan=scan)
+        scan.refresh_from_db()
+        return Response(self.get_serializer(scan).data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
     summary="Get the progress of a scan",
     description=(
         "Returns live counters plus every page visited so far. Poll this while "

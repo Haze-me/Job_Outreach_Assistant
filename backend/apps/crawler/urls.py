@@ -11,7 +11,7 @@ body and method of a POST.
 
 from django.urls import re_path
 
-from apps.crawler.views import ScanCreateView, ScanStatusView
+from apps.crawler.views import ScanCancelView, ScanCreateView, ScanStatusView
 
 UUID_RE = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 
@@ -20,6 +20,13 @@ urlpatterns = [
         rf"^scan/status/(?P<scan_id>{UUID_RE})/?$",
         ScanStatusView.as_view(),
         name="scan-status",
+    ),
+    # Declared before the scan/<company_id> route so "cancel" is not read as
+    # a company id.
+    re_path(
+        rf"^scan/cancel/(?P<scan_id>{UUID_RE})/?$",
+        ScanCancelView.as_view(),
+        name="scan-cancel",
     ),
     re_path(
         rf"^scan/(?P<company_id>{UUID_RE})/?$",

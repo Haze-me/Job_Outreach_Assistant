@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../services/queryKeys";
-import { fetchScanStatus, startScan } from "../services/scanService";
+import { cancelScan, fetchScanStatus, startScan } from "../services/scanService";
 
 /** How often a running scan is polled, in milliseconds. */
 const POLL_INTERVAL = 2000;
@@ -14,6 +14,21 @@ export function useStartScan() {
     onSuccess: (scan) => {
       queryClient.setQueryData(queryKeys.scans.status(scan.id), scan);
       // The company's `last_scan` has changed.
+      queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+    },
+  });
+}
+
+export function useCancelScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: cancelScan,
+    onSuccess: (scan) => {
+      // Write the response straight into the cache so the button and status
+      // update immediately, rather than waiting for the next poll.
+      queryClient.setQueryData(queryKeys.scans.status(scan.id), scan);
+      // A cancelled scan is no longer the company's active one.
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
     },
   });
@@ -44,6 +59,13 @@ export function useScanStatus(scanId, { enabled = true } = {}) {
     },
     enabled: Boolean(scanId) && enabled,
     refetchInterval: (query) => (query.state.data?.is_active ? POLL_INTERVAL : false),
+    // Keep polling while the tab is in the background. React Query pauses
+    // intervals on unfocused tabs by default, which froze this page mid-scan:
+    // a user switching away and back saw stale counters, and because the
+    // client's global refetchOnWindowFocus is off, nothing corrected them.
+    refetchIntervalInBackground: true,
+    // Belt and braces: refresh the moment the user returns to the tab.
+    refetchOnWindowFocus: true,
     // Progress must never be served from cache.
     staleTime: 0,
   });

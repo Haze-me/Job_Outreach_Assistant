@@ -32,6 +32,7 @@ class ScanSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     progress_percent = serializers.IntegerField(read_only=True)
     is_active = serializers.BooleanField(read_only=True)
+    can_be_cancelled = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Scan
@@ -43,6 +44,8 @@ class ScanSerializer(serializers.ModelSerializer):
             "status_display",
             "progress_percent",
             "is_active",
+            "can_be_cancelled",
+            "cancel_requested",
             "target_url",
             "pages_discovered",
             "pages_scanned",

@@ -17,6 +17,7 @@ class ScanStatus(models.TextChoices):
     RUNNING = "running", _("Running")
     COMPLETED = "completed", _("Completed")
     FAILED = "failed", _("Failed")
+    CANCELLED = "cancelled", _("Cancelled")
 
 
 class PageType(models.TextChoices):
@@ -75,6 +76,17 @@ class Scan(BaseModel):
         help_text=_("Empty when the scan ran inline rather than on a worker."),
     )
 
+    # Cancellation is cooperative rather than a process kill. The user sets
+    # this flag; the crawl loop notices it between pages and stops cleanly,
+    # keeping the pages and contacts already found. Terminating the worker
+    # process instead would discard that work and leave the record stranded
+    # mid-transition.
+    cancel_requested = models.BooleanField(
+        _("cancellation requested"),
+        default=False,
+        help_text=_("Set when a user asks to stop a scan that is already running."),
+    )
+
     class Meta:
         verbose_name = _("scan")
         verbose_name_plural = _("scans")
@@ -106,7 +118,14 @@ class Scan(BaseModel):
             return 0
         if not self.pages_discovered:
             return 0
+        # A cancelled scan keeps the fraction it genuinely reached rather than
+        # jumping to 100 or resetting to 0 -- it did real work.
         return min(99, round(self.pages_scanned / self.pages_discovered * 100))
+
+    @property
+    def can_be_cancelled(self) -> bool:
+        """Only a scan that has not finished can be stopped."""
+        return self.is_active
 
 
 class Page(BaseModel):
