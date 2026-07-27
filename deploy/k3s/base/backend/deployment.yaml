@@ -35,11 +35,17 @@ spec:
             httpGet:
               path: /health
               port: 8000
+              httpHeaders:
+                - name: Host
+                  value: email.emchrismobility.com
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
+              httpHeaders:
+                - name: Host
+                  value: email.emchrismobility.com
             initialDelaySeconds: 15
             periodSeconds: 20
