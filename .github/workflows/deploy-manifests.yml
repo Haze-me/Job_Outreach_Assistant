@@ -40,12 +40,6 @@ jobs:
           kubectl rollout status deployment/postgres -n job-outreach --timeout=90s
           kubectl rollout status deployment/redis -n job-outreach --timeout=90s
 
-      - name: Run migrations
-        run: |
-          kubectl delete job django-migrate -n job-outreach --ignore-not-found
-          kubectl apply -f deploy/k3s/base/migrate-job.yaml
-          kubectl wait --for=condition=complete job/django-migrate -n job-outreach --timeout=120s
-
       - name: Wait for app rollouts
         run: |
           kubectl rollout status deployment/backend -n job-outreach --timeout=90s
