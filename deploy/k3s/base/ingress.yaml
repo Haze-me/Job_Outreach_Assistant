@@ -10,10 +10,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - email.emchrimobility.com
+        - email.emchrismobility.com
       secretName: job-outreach-tls
   rules:
-    - host: email.emchrimobility.com
+    - host: email.emchrismobility.com
       http:
         paths:
           - path: /api
